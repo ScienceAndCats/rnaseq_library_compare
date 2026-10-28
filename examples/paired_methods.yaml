@@ -1,0 +1,54 @@
+# EXAMPLE ONLY: three distinct biological samples A/B/C, each split between two
+# preparation methods. Replace every path and source sample ID with real values.
+version: 1
+output_dir: ../results/paired_method_comparison_01
+organism: bacteria
+inputs:
+  - id: reference_run
+    path: /absolute/path/to/reference_method_output
+    pipeline: shortread
+    library_prep: reference_method
+  - id: test_run
+    path: /absolute/path/to/test_method_output
+    pipeline: agilent_pe
+    library_prep: test_method
+    count_layer: reads
+samples:
+  reference_A: {source: reference_run, sample: actual_reference_A, biological_sample: A}
+  reference_B: {source: reference_run, sample: actual_reference_B, biological_sample: B}
+  reference_C: {source: reference_run, sample: actual_reference_C, biological_sample: C}
+  test_A: {source: test_run, sample: actual_test_A, biological_sample: A}
+  test_B: {source: test_run, sample: actual_test_B, biological_sample: B}
+  test_C: {source: test_run, sample: actual_test_C, biological_sample: C}
+comparison_groups:
+  matched_A: [reference_A, test_A]
+  matched_B: [reference_B, test_B]
+  matched_C: [reference_C, test_C]
+reproducibility_groups:
+  - {name: reference_method_between_specimens, kind: biological, samples: [reference_A, reference_B, reference_C]}
+  - {name: test_method_between_specimens, kind: biological, samples: [test_A, test_B, test_C]}
+analysis:
+  gene_join: intersection
+  min_shared_gene_fraction: 0.8
+  min_count: 10
+reference:
+  genome_fasta: auto
+  gene_id_map: null
+differential_expression:
+  enabled: true
+  alpha: 0.05
+  min_count: 10
+  min_samples: 2
+  size_factors_fit_type: poscounts
+  analyses:
+    - name: test_method_vs_reference_method
+      purpose: technical
+      reference: [reference_A, reference_B, reference_C]
+      query: [test_A, test_B, test_C]
+      paired_by: biological_sample
+      covariates: []              # e.g. [batch], only when not confounded with method
+      allow_mixed_native_counting: false
+# A significant gene here is differentially REPRESENTED by the method/pipeline,
+# not necessarily biologically regulated. The biological material is matched.
+# For independent biological condition groups, purpose: biological and omit
+# paired_by; provide genuinely independent biological_sample IDs in both arms.

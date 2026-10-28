@@ -1,0 +1,9 @@
+# Alternative pip environment / CI dependencies. environment.yml is recommended.
+numpy>=1.26,<3
+pandas>=2.2,<3
+scipy>=1.12,<2
+matplotlib>=3.8,<4
+PyYAML>=6,<7
+scikit-learn>=1.4,<2
+pydeseq2==0.5.4
+pytest>=8,<9

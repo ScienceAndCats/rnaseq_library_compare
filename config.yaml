@@ -1,0 +1,98 @@
+# All relative paths are relative to THIS YAML file, not the submission directory.
+version: 1
+output_dir: ./results/library_comparison_01
+organism: bacteria                 # bacteria or host; analyze organisms separately
+
+inputs:
+  - id: short
+    path: /absolute/path/to/bacteria_pipeline_output
+    pipeline: shortread
+    library_prep: method_1         # Replace with your actual preparation method.
+    count_layer: reads
+    # read_layout: single         # Only needed if an old run lacks its manifest.
+
+  - id: agilent
+    path: /absolute/path/to/agilent_pipeline_output
+    pipeline: agilent_pe
+    library_prep: method_2
+    count_layer: reads             # Use molecules only for MBC_MODE=count outputs.
+
+  # Optional: add as many outputs as needed, including repeated pipeline types.
+  # - id: long
+  #   path: /absolute/path/to/longread_output/slurm_runs/EXACT_RUN_ID
+  #   pipeline: longread
+  #   library_prep: method_3
+  #   count_layer: reads
+
+# Named lists are easier to read than nested bracket lists. In EVERY list, the
+# FIRST sample is the reference; each later sample is compared with that one.
+# Plain FASTQ stems work when unique. Ambiguous names need "input_id::sample".
+# Paired-end R1 FASTQ names are resolved against the pipeline's paired sample ID.
+# Long-read _R1/_R2 stems remain separate samples; they are NEVER collapsed.
+comparison_groups:
+  comparison_set_1:
+    - MW147-J-EM0330_S2_L001_R1_001
+    - MW155_3_R1
+    - MW155_5_R1
+  comparison_set_2:
+    - MW147-J-EM0330_S2_L001_R1_001
+    - MW155_6_R1
+    - MW155_7_R1
+    - MW155_8_R1
+
+# You can instead use a literal YAML list of lists:
+# comparison_groups:
+#   - [reference_sample, query_1, query_2]
+#   - [reference_sample, query_3, query_4]
+
+# Optional aliases + metadata. Do not invent biological_sample identifiers:
+# the same original biological material must have the same ID across methods.
+# samples:
+#   easy_reference_name:
+#     source: short
+#     sample: MW147-J-EM0330_S2_L001_R1_001
+#     biological_sample: specimen_A
+#     library_prep: NEB
+#     batch: batch_1
+# Then use easy_reference_name in comparison_groups.
+samples: {}
+
+# Declare true replicate sets separately from reference/query comparisons.
+# Every group must have one library_prep. Technical groups should come from the
+# same biological sample; biological groups need distinct biological_sample IDs.
+reproducibility_groups: []
+#  - name: NEB_technical_replicates
+#    kind: technical
+#    samples: [NEB_library_A1, NEB_library_A2, NEB_library_A3]
+
+analysis:
+  gene_join: intersection           # strict also supported; no union-zero-filling
+  min_shared_gene_fraction: 0.80    # Refuse incompatible IDs/reference annotations.
+  require_matching_genomic_coordinates: true
+  min_count: 10                     # Detection/agreement threshold, not a DE test.
+  cpm_pseudocount: 1.0              # Descriptive log2((query_CPM+1)/(reference_CPM+1)).
+  pca_top_genes: 2000
+  warn_retained_assignment_fraction: 0.80
+  gene_panel: null                  # Optional text file: one canonical gene ID/line.
+  import_positional_profiles: true # Existing MIDPOINT profiles, not new coverage.
+
+reference:
+  # auto uses the first available DNA-only FASTA recorded in the selected runs'
+  # reference manifests. An explicit genomic FASTA path (.gz supported) overrides
+  # that choice. null disables GC analysis. Never supply combined RNA+genome FASTA.
+  genome_fasta: auto
+  # Optional CSV columns: source,gene_id,canonical_gene_id. One-to-one mappings
+  # only. No fuzzy gene-name matching or automatic locus-tag version stripping.
+  gene_id_map: null
+
+differential_expression:
+  # Enable after supplying actual biological-replicate groups + sample metadata.
+  # The first-sample comparison lists do NOT create biological replicates.
+  enabled: false
+  alpha: 0.05
+  min_count: 10
+  min_samples: 2
+  size_factors_fit_type: poscounts
+  control_genes: null               # Optional invariant genes, one ID per line.
+  analyses: []
+  # See examples/paired_methods.yaml for a complete, replicate-aware template.
