@@ -1,5 +1,51 @@
 # Upstream compatibility snapshot — 2026-10-27
 
+## RNA category extension
+
+Category reconstruction was added after inspecting the following complete
+upstream revisions:
+
+| Repository | Commit |
+|---|---|
+| bacteria_RNAseq_pipeline | `b488fe8fc1450baafe1996a7aebf3203fd14890d` |
+| agilentPE_bacteria_RNAseq_pipeline | `e7163280b778027ddeb3859f7e8cd233f179d9be` |
+| longread_bacteria_RNAseq_pipeline | `e607d2978f768684f0f8aa10e74913c979be8648` |
+
+`alignment_categories.py` in the short-read pipeline defines aligned-block,
+strand-aware, exclusive rRNA > CDS > other RNA > intergenic/unannotated totals.
+Its JSONs contain totals and a CDS feature set, **not read-level category
+membership**. Gene-level CDS/rRNA featureCounts matrices are not sufficient to
+reconstruct all other RNA or unannotated alignments. The extension therefore
+reads retained stage alignments and their normalized annotations. Generic
+genomic transcript spans do not label introns as RNA; exon and UTR handling
+follows the short-read category rules. Other-RNA types/biotypes are further
+split as documented in README.md.
+
+Short-read/Agilent current-run manifests identify stage category JSONs (and
+deduplicated molecule BAMs for Agilent), even when a stage has no CDS table.
+Recognizable relocated paths are supported. Legacy stage-count headers provide
+alignment paths; custom `category_stages` can supply missing path metadata.
+Long-read discovery follows the recorded combined alignment's `rna/` and
+`dna/` sibling stages and the prepared reference manifest, without counting
+both the combined SAM and its components. RNA-only coordinates never supply
+genomic lengths or GC values.
+
+All category **feature** matrices use unique assignment in the winning class,
+with ambiguous-feature observations retained in category totals. Category
+metadata distinguishes this from each pipeline's native gene-counting policy.
+This common classification follows the short-read rules across all adapters;
+it does not undo prior alignment/routing/filter choices or make reference
+assemblies interchangeable. In particular, modern long-read annotation rules
+can differ from short-read handling of UTRs and strandless features; retained
+long-read TSV totals are not relabeled as reclassified feature counts.
+
+Native-CDS import and its limitations below are retained. Real upstream runs
+were not available for validation; synthetic retained SAM/GFF runs exercise all
+three adapters, both stages, proper-pair reversal, all twelve panels, and
+category-specific PyDESeq2 testing.
+
+## Original native-CDS adapter snapshot
+
 The adapters were written from direct inspection of the three named repositories,
 not inferred from their project names. Upstream `main` branches can change.
 These are **file blob SHAs**, not whole-repository commit IDs.

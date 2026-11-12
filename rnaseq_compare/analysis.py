@@ -131,7 +131,7 @@ def make_pair_plots(frame, reference, query, destination, prefix):
     ax.axhline(0, linestyle="--")
     ax.set(xlabel="Mean log2(CPM + pseudocount)", ylabel="Query / reference log2 ratio", title="Descriptive MA plot\n" + title)
     save(fig, destination / f"{prefix}.ma.png")
-    for column, xlabel in (("length_bp", "Genomic CDS length (bp; log scale)"), ("gc_percent", "Genomic CDS GC (%)")):
+    for column, xlabel in (("length_bp", "Genomic feature length (bp; log scale)"), ("gc_percent", "Genomic feature GC (%)")):
         good = np.isfinite(selected[column])
         if column == "length_bp":
             good &= selected[column] > 0

@@ -56,7 +56,7 @@ def load_config(path: Path) -> dict:
     if config.get("organism", "bacteria") not in {"bacteria", "host"}:
         raise InputError("organism must be bacteria or host; run them separately.")
     allowed = {"version", "output_dir", "organism", "inputs", "samples", "comparison_groups",
-               "reproducibility_groups", "analysis", "reference", "differential_expression"}
+               "reproducibility_groups", "analysis", "reference", "differential_expression", "rna_categories"}
     unknown = set(config) - allowed
     if unknown:
         raise InputError(f"Unknown top-level YAML keys: {sorted(unknown)}")
@@ -485,7 +485,7 @@ def read_gene_list(path: Path) -> list[str]:
     return genes
 
 
-def build_matrix(sources, selected, config, warnings):
+def build_matrix(sources, selected, config, warnings, allow_zero_counts=False):
     used_sources = [s for s in sources if any(k.startswith(s.id + "::") for k in selected)]
     sets = [set(s.counts.index) for s in used_sources]
     common = set.intersection(*sets)
@@ -529,7 +529,7 @@ def build_matrix(sources, selected, config, warnings):
         total, retained = int(values.sum()), int(selected_values.sum())
         coverage_rows.append({"sample_id": key, "all_source_gene_assignments": total,
             "retained_gene_assignments": retained, "retained_assignment_fraction": retained / total if total else np.nan})
-        if retained == 0:
+        if retained == 0 and not allow_zero_counts:
             raise InputError(f"{key} has zero counts on the analysis gene set. Remove it from the requested comparisons; normalization is undefined.")
         if total and retained / total < float(settings.get("warn_retained_assignment_fraction", 0.8)):
             warnings.append(f"{key}: only {retained/total:.1%} of source gene assignments remain after gene-set/panel selection.")
@@ -547,7 +547,7 @@ def build_matrix(sources, selected, config, warnings):
             "coordinate_sources": ";".join(sid for sid, _ in known), "gc_percent": np.nan})
     if mismatch:
         if settings.get("require_matching_genomic_coordinates", True):
-            raise InputError(f"Genomic CDS coordinates disagree for {len(mismatch)} shared IDs, e.g. {mismatch[:8]}. Use the same assembly/annotation. An explicit override can retain counts but disables length/GC for conflicting genes.")
+            raise InputError(f"Genomic feature coordinates disagree for {len(mismatch)} shared IDs, e.g. {mismatch[:8]}. Use the same assembly/annotation. An explicit override can retain counts but disables length/GC for conflicting genes.")
         warnings.append(f"{len(mismatch)} genes have conflicting genomic coordinates: length/GC bias values are unavailable for them. Matching IDs do not prove comparable feature definitions.")
     annotation = pd.DataFrame(annotation_rows).set_index("gene_id")
     if not annotation.genomic_coordinates_verified_across_sources.all():

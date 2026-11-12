@@ -19,25 +19,26 @@ from . import __version__
 from .analysis import (depth_analysis, global_qc, pairwise_analysis, positional_profiles,
                        reproducibility_analysis, write_csv)
 from .de import prepare_plans, count_filter, run_de
+from .rna_categories import prepare_categories, analyze_categories
 from .io import (Catalog, InputError, build_matrix, comparison_pairs, config_path, file_sha256,
                  gc_from_fasta, load_config, load_sources, read_disposition, reproducibility_groups, detect_genome_fasta)
 
 
 LIMITATIONS = [
-    "Gene expression here means native CDS gene-assignment counts, not transcript isoforms, all ncRNAs, or absolute RNA molecules.",
+    "Root gene-expression results use native CDS assignments. RNA category results use separately reconstructed annotated features and intergenic bins; neither estimates transcript isoforms or absolute RNA molecules.",
     "A sample-to-sample log2 ratio is descriptive. A low correlation is not evidence that a library-prep method is worse when biological samples differ.",
     "P-values require independent biological samples. Repeated lanes or library preps from the same RNA do not supply biological replication.",
     "Cross-platform/pipeline differences can include alignment, counting rules, read length, strandedness, capture targets, PCR duplication, and RNA/DNA-stage routing—not only library prep.",
     "CPM is compositional and uses the selected shared-gene/panel assignment total. DESeq2 normalization assumes a suitable stable reference across genes; targeted capture or broad shifts may violate that assumption.",
     "Assignment-depth rarefaction samples gene-count entries, not original reads, molecules, or library complexity. Long-read -O can assign one read to several genes.",
     "Upstream metagene curves describe read/fragment midpoints on potentially different gene panels and coordinate systems. They are not per-base 5′/3′ coverage or a harmonized coverage assay.",
-    "No remapping, recounting, duplicate removal, or automatic technical-replicate collapse is performed. No upstream outputs are modified.",
+    "RNA categories are reconstructed from retained alignments without remapping. No duplicate removal or automatic technical-replicate collapse is performed. No upstream outputs are modified.",
 ]
 
 
 def versions():
     result = {"rnaseq_library_compare": __version__, "python": platform.python_version()}
-    for name in ("numpy", "pandas", "scipy", "matplotlib", "PyYAML", "pydeseq2", "anndata"):
+    for name in ("numpy", "pandas", "scipy", "matplotlib", "PyYAML", "pydeseq2", "anndata", "pysam"):
         try:
             result[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
@@ -54,6 +55,8 @@ def report(output, warnings, metrics, metadata, plans):
             "- `comparison_index.csv`: maps requested comparisons to per-gene CSVs and plots.",
             "- `reproducibility_summary.csv`: explicitly declared replicate groups.",
             "- `differential_expression_status.csv`: what significance testing did or did not run.",
+            "- `rna_category_counts.csv`, `rna_category_analysis_status.csv`: RNA category totals and analysis availability.",
+            "- `rna_categories/<category>/`: independent feature-level analyses; `rna_categories/<category>.csv`: separate category counts.",
             "- `sample_inventory.csv`, `sample_metadata.csv`, `gene_set_audit.csv`, `retained_assignments.csv`: input/selection audits.",
             "- `run_manifest.json`: input hashes, paths, package versions, and completion status.", ""]
     (output / "REPORT.md").write_text("\n".join(body), encoding="utf-8")
@@ -121,7 +124,12 @@ def run(args):
         raise InputError(f"genome_fasta not found: {fasta_path}")
     if plans and versions()["pydeseq2"] == "not installed":
         raise InputError("Differential-expression testing is enabled but PyDESeq2 is not installed. Activate the supplied environment.")
+    category_data = prepare_categories(sources, selected, config, warnings)
     if args.check:
+        if category_data is not None:
+            print(f"RNA categories: reconstructed {len(category_data.sources)} sources; {len(category_data.missing)} sources lack required retained inputs.")
+            if category_data.assignments:
+                category_data.assignments.close()
         print(f"CHECK PASSED: {len(pairs)} descriptive comparisons, {len(replicate_groups)} reproducibility groups, {len(plans)} DE analyses.")
         print("This checks input/design validity, not statistical model convergence or PACE execution.")
         for warning in dict.fromkeys(warnings):
@@ -187,6 +195,8 @@ def run(args):
         else:
             warnings.append("Positional-profile import disabled by configuration.")
         run_de(counts, annotation, plans, config, args.threads, output, warnings)
+        manifest["rna_category_analyses"] = analyze_categories(category_data, selected, config, pairs,
+            replicate_groups, plans, metadata, fasta_path, args.threads, output, warnings)
         report(output, warnings, metrics, metadata, plans)
         manifest.update(status="completed", completed_utc=datetime.now(timezone.utc).isoformat(), warnings=list(dict.fromkeys(warnings)))
         persist()

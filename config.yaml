@@ -65,6 +65,28 @@ reproducibility_groups: []
 #    kind: technical
 #    samples: [NEB_library_A1, NEB_library_A2, NEB_library_A3]
 
+# Reconstruct per-category features from retained bacterial SAM/BAM + normalized
+# GFFs. With missing files, totals are imported where available and feature
+# analyses are explicitly unavailable. Set require_alignments: true to fail.
+rna_categories:
+  enabled: true
+  require_alignments: false
+  intergenic_bin_bp: 1000
+  write_read_assignments: false    # Optional potentially large read-to-class CSV.
+  categories:
+    - bacteria_aligned
+    - bacteria_non_rRNA
+    - bacteria_rRNA
+    - bacteria_CDS
+    - bacteria_other_RNA
+    - bacteria_intergenic_unannotated
+    - other_RNA_total
+    - sRNA_ncRNA
+    - tRNA_tmRNA
+    - antisense_RNA
+    - other_noncoding_RNA
+    - UTR_transcript_regions
+
 analysis:
   gene_join: intersection           # strict also supported; no union-zero-filling
   min_shared_gene_fraction: 0.80    # Refuse incompatible IDs/reference annotations.

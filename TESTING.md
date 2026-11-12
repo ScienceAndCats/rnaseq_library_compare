@@ -1,4 +1,31 @@
-# Validation of this delivery
+# Validation
+
+## RNA category extension
+
+- `python -m pytest -q`: **55 passed**, including the original PyDESeq2
+  integration test and a new real PyDESeq2 fit restricted to an sRNA/ncRNA
+  feature panel. The small paired fits emit the expected residual-degrees-of-
+  freedom warning. A one-feature panel is explicitly marked not testable.
+- The new synthetic `examples/make_category_demo.py` workflow completed using
+  retained SAMs, normalized GFFs, and both RNA/DNA stages in all three pipeline
+  layouts. All 12 panels completed across 9 libraries: 72 requested pairwise
+  comparisons and 36 reproducibility-group analyses. Category conservation,
+  subtype conservation, and stage-specific positional outputs were verified.
+- Tests additionally cover RNA/CDS overlap priority, subtype biotypes, genomic
+  transcript introns, spliced CIGAR gaps, opposite strands, reverse proper
+  pairs with separated mates, ambiguous-feature exclusion, reference bounds,
+  agreement with upstream JSON totals, missing alignment fallback, strict
+  input mode, zero-category normalization, explicit stage overrides, duplicate
+  alignment rejection, RNA-only stages with no CDS matrix, and selected-sample
+  discovery that ignores unavailable unselected alignments.
+- `python -m pip check` and `git diff --check`: passed.
+
+Runtime: Python 3.12.14, pysam 0.23.3, PyDESeq2 0.5.4. The environment files
+include pysam for new installations. No real count matrices/alignment datasets,
+PACE nodes, or real Slurm submissions were available. These checks establish
+software behavior on synthetic data, not biological validity of any method.
+
+## Original delivery (historical)
 
 Validation date: 2026-10-27. These are software checks, not biological results.
 

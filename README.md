@@ -7,9 +7,11 @@ outputs of these ScienceAndCats pipelines:
 - `agilentPE_bacteria_RNAseq_pipeline` (`pipeline: agilent_pe`)
 - `longread_bacteria_RNAseq_pipeline` (`pipeline: longread`)
 
-The program reads **native CDS featureCounts matrices**, not FASTQs. It does not
-rerun alignment, change upstream results, or require the three repositories to
-be installed alongside it. A PACE Slurm launcher is included.
+The program reads **native CDS featureCounts matrices**, not FASTQs, and can
+reconstruct separate bacterial RNA-category analyses from retained SAM/BAM
+alignments and normalized GFF annotations. It does not rerun alignment, change
+upstream results, or require the three repositories to be installed alongside
+it. A PACE Slurm launcher is included.
 
 **Two different questions remain separate:** single-library comparisons report
 expression ratios and agreement; replicate-aware analyses use PyDESeq2 to test
@@ -148,6 +150,151 @@ identifiers; `sample_inventory.csv` records source and original names. Do not
 assign different biological IDs to lanes or repeated preps of the same material.
 
 ## What is calculated?
+
+### Separate bacterial RNA categories
+
+For `organism: bacteria`, category analysis is enabled by default in addition to
+the original native-CDS results at the output root. It independently analyzes:
+
+- Bacteria aligned
+- Bacteria non-rRNA
+- Bacteria rRNA
+- Bacteria CDS
+- Bacteria other RNA
+- Bacteria intergenic/unannotated
+
+The other-RNA panel is also analyzed as `other_RNA_total`, `sRNA_ncRNA`,
+`tRNA_tmRNA`, `antisense_RNA`, `other_noncoding_RNA`, and
+`UTR_transcript_regions`. Each has its own CSV at
+`rna_categories/<category>.csv` and a directory of results at
+`rna_categories/<category>/`. `other_RNA_total` repeats `bacteria_other_RNA`;
+it is not a sixth component to add to the five subtypes.
+
+The upstream category JSONs and read-breakdown CSV record **counts**, not the
+read membership needed for feature analysis. This tool reclassifies mapped
+primary alignments using aligned CIGAR blocks, annotation, and counting strand.
+It follows the short-read pipeline's exclusive priority **rRNA → CDS → other
+RNA → intergenic/unannotated**, using both sequenced mates of a proper pair as
+one observation. Secondary/supplementary alignments, unmapped reads, spliced
+gaps, and unsequenced inserts do not add category counts. RNA-first and residual
+DNA stages are added once. Available upstream category JSON totals must agree
+with reconstruction; disagreement is an error.
+
+The four exclusive categories sum to aligned. Non-rRNA is aligned minus rRNA;
+these nested panels must not be added to each other. Category CSVs include
+counts, fraction of bacterial aligned observations, observation units, and
+availability. Each directory also contains raw-total comparison ratios, which
+are explicitly depth-dependent and separate from within-category CPM ratios.
+
+Subtype assignment uses the feature type and explicit `ncRNA_class`,
+`gene_biotype`, `transcript_biotype`, or `biotype` attributes:
+
+| Subtype | Annotation evidence |
+|---|---|
+| `sRNA_ncRNA` | sRNA, ncRNA, nc_RNA, small_RNA |
+| `tRNA_tmRNA` | tRNA or tmRNA |
+| `antisense_RNA` | Explicit antisense RNA type/biotype; never inferred from opposite-strand reads |
+| `other_noncoding_RNA` | Remaining annotated RNA, such as misc_RNA, ribozymes, RNase P RNA, and other RNA types |
+| `UTR_transcript_regions` | UTRs, eligible exons, and RNA-reference transcript regions outside higher-priority hits |
+
+Overlapping other-RNA subtypes use the exclusive priority antisense → tRNA/tmRNA
+→ sRNA/ncRNA → other noncoding → UTR/transcript regions. The five subtype totals
+sum exactly to other RNA. Generic genomic genes or whole mRNA spans do not label
+introns as RNA. Exon-bearing RNA features use exons; RNA-reference transcripts
+can contribute their transcript extent. An annotation that only says `ncRNA`
+cannot establish a more specific subtype that was discarded upstream.
+
+Feature analyses use **unique assignment within the winning class**, for all
+pipelines. If several features of that class overlap an observation, it still
+contributes once to its category total, but is excluded from feature counts.
+The ambiguous count is exported. IDs are prefixed by RNA class to avoid CDS/
+ncRNA collisions. Genomic lengths/GC use the relevant annotated intervals;
+RNA-reference coordinates are never used as genomic coordinates. Intergenic
+features are fixed-grid bins clipped to annotation-free reference intervals
+(default grid 1000 bp), with explicit contig, coordinates, stage, and strand in
+their IDs. These bins are genomic regions, not predicted genes.
+
+For each available panel the pipeline writes raw counts, independently
+normalized CPM/log2-CPM, pairwise feature ratios and agreement, detection,
+length/GC/abundance associations, PCA/heatmaps, depth sensitivity,
+reproducibility, and the configured replicate-aware DE analyses. Category
+positional profiles are recomputed from the median overlapping aligned base
+on each spliced feature; they do not substitute upstream CDS-only averages or
+claim per-base coverage. RNA/DNA stages remain separate and contributing
+expressed feature panels can differ. The existing
+`analysis.import_positional_profiles: false` switch disables this step too.
+FDR remains per DE analysis **within each category**, not across all categories.
+Native-CDS root results retain their existing featureCounts assignment policy,
+so their CDS totals need not equal the exclusive category CDS totals.
+
+```yaml
+rna_categories:
+  enabled: true
+  require_alignments: true      # Stop if a selected source cannot be reconstructed.
+  intergenic_bin_bp: 1000
+  write_read_assignments: true  # Optional large read-name/stage/class/feature CSV.
+  # Omit categories to analyze all twelve panels; or select a subset:
+  # categories: [bacteria_rRNA, other_RNA_total, sRNA_ncRNA, tRNA_tmRNA]
+```
+
+Automatic discovery uses current-run stages in `run_manifest.json` plus
+`reference_manifest.json` for short-read and Agilent outputs, including stages
+with no CDS count table. It follows recorded count-table paths for legacy and
+long-read outputs, using long-read `rna/` and `dna/` stage SAMs rather than
+recounting the combined SAM. Only recognizable relocated paths are resolved;
+there is no recursive search through historical runs. Short-read/long-read
+default to forward strand, and Agilent to reverse strand; retained featureCounts
+`-s` settings are used when available. For a short-read run
+made with a different `COUNT_STRAND`, set `category_strand` on that input. Keep
+`read_layout` accurate when the upstream manifest lacks it. Coordinate-sorted
+paired BAMs are temporarily name-sorted with pysam; allow local scratch space.
+No samtools executable or upstream checkout is needed.
+
+For moved files or custom layouts, explicitly list **every** bacterial stage
+for every selected sample under the corresponding input (paths relative to
+the comparison YAML):
+
+```yaml
+inputs:
+  - id: short
+    path: /data/published_run
+    pipeline: shortread
+    read_layout: paired
+    category_strand: reverse
+    category_stages:
+      - sample: reference_library
+        kind: dna
+        alignment: /data/published_run/bacteria/reference_library.sorted.bam
+        gff: /data/references/dna.gff3
+      - sample: reference_library
+        kind: rna
+        alignment: /data/published_run/bacteria/rna/reference_library.sorted.bam
+        gff: /data/references/rna.gff3
+      # Add the same stages for each remaining selected library.
+```
+
+With the default `require_alignments: false`, missing retained inputs leave
+native-CDS analyses usable, import main-category totals where possible, and
+mark category feature analyses unavailable in `rna_category_analysis_status.csv`.
+Subtype counts remain `NA` if they cannot be reconstructed; aggregate counts
+cannot be split into invented per-gene values. Category comparisons require
+compatible feature IDs/coordinates across all selected sources, using the same
+gene-overlap and coordinate safeguards as the root analysis. Zero-count samples
+have `NA` within-category CPM and are explicitly excluded from pair/group
+analyses; their biological replicates are never silently dropped from a DE
+model. Empty annotation panels and untestable DE models have explicit statuses.
+With `count_layer: molecules`, only retained deduplicated molecule alignments
+are classified; read-based disposition totals are never substituted. A root
+CDS `gene_panel` is not applied to RNA panels. Root CDS `control_genes` cause
+category DE to be marked untestable; use `control_genes: null` to run it.
+
+A complete synthetic example retaining both stages in all three layouts is:
+
+```bash
+python examples/make_category_demo.py /path/to/new/category_demo
+python compare_rnaseq.py /path/to/new/category_demo/config.yaml --check
+python compare_rnaseq.py /path/to/new/category_demo/config.yaml --threads 2
+```
 
 ### Quantification and agreement
 
@@ -341,6 +488,10 @@ Start with `report.html` (offline, with PNGs and CSV links) or `REPORT.md`.
 | `upstream_read_disposition.csv` | Imported read/pair-category summaries |
 | `differential_expression_status.csv`, `differential_expression/` | What significance testing ran, designs, and results |
 | `sample_inventory.csv`, `sample_metadata.csv`, `gene_annotation.csv` | Resolved identities and covariates |
+| `rna_category_counts.csv`, `rna_category_analysis_status.csv` | Category totals/fractions, reconstruction and feature-analysis status |
+| `rna_categories/<category>.csv` | Separate per-sample CSV for each main category and other-RNA subtype |
+| `rna_categories/<category>/` | Per-category matrices, comparisons, bias, QC, depth, reproducibility, positional profiles, DE, and notes |
+| `rna_categories/alignment_provenance.csv`, `rna_categories/read_assignments.csv` | Retained-stage input hashes/strands; optional read membership |
 | `gene_set_audit.csv`, `excluded_genes.csv`, `retained_assignments.csv` | Shared-gene and count-retention audit |
 | `config.used.yaml`, `run_manifest.json` | Configuration snapshot, paths, hashes, software versions, status |
 
