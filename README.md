@@ -37,6 +37,10 @@ python compare_rnaseq.py config.local.yaml --check
 sbatch run_comparison.sbatch config.local.yaml
 ```
 
+The environment uses conda-forge and Bioconda (`pysam` is supplied by Bioconda).
+After pulling updates to an existing checkout, refresh the environment with
+`conda env update -f environment.yml`, then activate `rnaseq-library-compare`.
+
 The job defaults to account `gts-mwhiteley3-biocluster`, partition `cpu-small`,
 QOS `inferno`, four CPUs, 32 GB RAM, and 12 hours. These are editable resource
 requests, not predicted resource consumption. Activate the **new** environment
